@@ -1,0 +1,4 @@
+.vagrant/
+storage/
+vagrantkey*
+*.log
