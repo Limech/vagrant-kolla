@@ -135,9 +135,10 @@ EOF
     elif is_ubuntu; then
         curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
         sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-        apt-get update
-        apt-get -y install docker-ce docker-ce-cli containerd.io
-        sed -i -r "s|(ExecStart)=(.+)|\1=/usr/bin/docker daemon --insecure-registry ${REGISTRY} --registry-mirror=http://${REGISTRY}|" /lib/systemd/system/docker.service
+        sudo apt-get update
+        sudo apt-get -y install docker-ce docker-ce-cli containerd.io
+        ##sed -i -r "s|(ExecStart)=(.+)|\1=/usr/bin/docker daemon --insecure-registry ${REGISTRY} --registry-mirror=http://${REGISTRY}|" /lib/systemd/system/docker.service
+        echo "{ \"insecure-registries\" : [\"operator:5000\"], \"registry-mirrors\": [\"http://operator:5000\"] }" > /etc/docker/daemon.json
     else
         echo "Unsupported Distro: $DISTRO" 1>&2
         exit 1
@@ -214,10 +215,10 @@ EOF
 }
 
 prep_work
-install_docker
 
 if [[ "$VM" == "operator" ]]; then
     configure_operator
+    install_docker
 fi
 
 cleanup

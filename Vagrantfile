@@ -80,7 +80,7 @@ NODE_SETTINGS ||= {
   },
   control: {
     cpus: 1,
-    memory: 2048
+    memory: 4096
   },
   compute: {
     cpus: 1,
@@ -92,7 +92,7 @@ NODE_SETTINGS ||= {
   },
   network: {
     cpus: 1,
-    memory: 1024
+    memory: 2048
   },
   monitor: {
     cpus: 1,
