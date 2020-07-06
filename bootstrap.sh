@@ -89,13 +89,13 @@ deb http://192.168.7.237:8081/repository/ubuntu-bionic/ bionic-security universe
 deb http://192.168.7.237:8081/repository/ubuntu-bionic/ bionic-security multiverse
 EOF
         apt-get update
-        apt-get -y install python-mysqldb python-pip python-dev build-essential libssl-dev libffi-dev libxml2-dev libxslt-dev
+        apt-get -y install python3-mysqldb python3-pip python3-dev build-essential libssl-dev libffi-dev libxml2-dev libxslt-dev
     else
         echo "Unsupported Distro: $DISTRO" 1>&2
         exit 1
     fi
 
-    pip install --upgrade docker
+    pip3 install --upgrade docker
 }
 
 # Do some cleanup after the installation of kolla
@@ -138,7 +138,7 @@ EOF
         sudo apt-get update
         sudo apt-get -y install docker-ce docker-ce-cli containerd.io
         ##sed -i -r "s|(ExecStart)=(.+)|\1=/usr/bin/docker daemon --insecure-registry ${REGISTRY} --registry-mirror=http://${REGISTRY}|" /lib/systemd/system/docker.service
-        echo "{ \"insecure-registries\" : [\"operator:5000\"], \"registry-mirrors\": [\"http://operator:5000\"] }" > /etc/docker/daemon.json
+        echo "{ \"insecure-registries\" : [\"operator:4000\"], \"registry-mirrors\": [\"http://operator:4000\"] }" > /etc/docker/daemon.json
     else
         echo "Unsupported Distro: $DISTRO" 1>&2
         exit 1

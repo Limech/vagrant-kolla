@@ -76,7 +76,7 @@ NODE_SETTINGS ||= {
   },
   operator: {
     cpus: 1,
-    memory: 1024
+    memory: 2048
   },
   control: {
     cpus: 1,
