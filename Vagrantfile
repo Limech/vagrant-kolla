@@ -83,8 +83,8 @@ NODE_SETTINGS ||= {
     memory: 4096
   },
   compute: {
-    cpus: 1,
-    memory: 1024
+    cpus: 2,
+    memory: 8192
   },
   storage: {
     cpus: 1,
@@ -120,26 +120,51 @@ rescue
     "Missing configuration for NODE_SETTINGS[#{node}][#{setting}]"
 end
 
-def configure_wifi_vbox_networking(vm)
-  # Even if adapters 1 & 2 don't need to be modified, if the order is to be
-  # maintained, some modification has to be done to them. This will maintain
-  # the association inside the guest OS: NIC1 -> eth0, NIC2 -> eth1, NIC3 ->
-  # eht2. The modifications for adapters 1 & 2 only change optional properties.
-  # Adapter 3 is enabled and connected to the NAT-Network named "OSNetwork",
-  # while also changing its optional properties. Since adapter 3 is used by
-  # Neutron for the external network, promiscuous mode is set to "allow-all".
-  # Also, use virtio as the adapter type, for better performance.
-  vm.customize ["modifyvm", :id, "--nictype1", "virtio"]
-  vm.customize ["modifyvm", :id, "--cableconnected1", "on"]
-  vm.customize ["modifyvm", :id, "--nicpromisc2", "deny"]
-  vm.customize ["modifyvm", :id, "--nictype2", "virtio"]
-  vm.customize ["modifyvm", :id, "--cableconnected2", "on"]
-  vm.customize ["modifyvm", :id, "--nic3", "natnetwork"]
-  vm.customize ["modifyvm", :id, "--nat-network3", "OSNetwork"]
-  vm.customize ["modifyvm", :id, "--nicpromisc3", "allow-all"]
-  vm.customize ["modifyvm", :id, "--nictype3", "virtio"]
-  vm.customize ["modifyvm", :id, "--cableconnected3", "on"]
+def configure_vbox_networking(vm, provider, node_type)
+
+  ## Using default IP range from VirtualBox.
+  provider.customize ["modifyvm", :id, "--nic1", "nat"] 
+  provider.customize ["modifyvm", :id, "--nictype1", "virtio"]
+  provider.customize ["modifyvm", :id, "--cableconnected1", "on"]
+
+  #provider.customize ["modifyvm", :id, "--nic2", "hostonly"]
+  #provider.customize ["modifyvm", :id, "--hostonlyadapter2", "vboxnet0"]
+  provider.customize ["modifyvm", :id, "--nictype2", "virtio"]
+  provider.customize ["modifyvm", :id, "--cableconnected2", "on"]
+
+  ## All connect to NAT network used for external networking
+  provider.customize ["modifyvm", :id, "--nic3", "natnetwork"]
+  provider.customize ["modifyvm", :id, "--nat-network3", "externalnetwork"]
+  provider.customize ["modifyvm", :id, "--nicpromisc3", "allow-all"]
+  provider.customize ["modifyvm", :id, "--nictype3", "virtio"]
+  provider.customize ["modifyvm", :id, "--cableconnected3", "on"]
+
+  
+  case node_type
+  when "compute"
+     provider.customize ["modifyvm", :id, "--nic4", "intnet"]
+     provider.customize ["modifyvm", :id, "--intnet4", "storagenetwork"]
+     provider.customize ["modifyvm", :id, "--nictype4", "virtio"]
+     provider.customize ["modifyvm", :id, "--cableconnected4", "on"]
+  when "storage"
+     provider.customize ["modifyvm", :id, "--nic4", "intnet"]
+     provider.customize ["modifyvm", :id, "--intnet4", "storagenetwork"]
+     provider.customize ["modifyvm", :id, "--nictype4", "virtio"]
+     provider.customize ["modifyvm", :id, "--cableconnected4", "on"]
+
+     provider.customize ["modifyvm", :id, "--nic5", "intnet"]
+     provider.customize ["modifyvm", :id, "--intnet5", "clusternetwork"]
+     provider.customize ["modifyvm", :id, "--nictype5", "virtio"]
+     provider.customize ["modifyvm", :id, "--cableconnected5", "on"]
+  when "network"
+     provider.customize ["modifyvm", :id, "--nic4", "bridged"]
+     provider.customize ["modifyvm", :id, "--bridgeadapter4", "enp0s9"]
+     provider.customize ["modifyvm", :id, "--nictype4", "virtio"]
+     provider.customize ["modifyvm", :id, "--cableconnected4", "on"]
+  end
+
 end
+   
 
 Vagrant.configure(2) do |config|
 
@@ -151,10 +176,9 @@ Vagrant.configure(2) do |config|
   user_home = "/home/#{username}"
   vagrant_shared_folder = "#{user_home}/sync"
 
-  # Next to the hostonly NAT-network there is a host-only network with all
-  # nodes attached. Plus, each node receives a 3rd adapter connected to the
-  # outside public network.
   config.vm.network "private_network", type: "dhcp"
+  # Bridge interface
+  #config.vm.network "public_network", bridge: 'eno1'
 
   my_privatekey = File.read(File.join(vagrant_dir, "vagrantkey"))
   my_publickey = File.read(File.join(vagrant_dir, "vagrantkey.pub"))
@@ -203,8 +227,8 @@ Vagrant.configure(2) do |config|
       if PROVIDER == "libvirt"
         vm.graphics_ip = GRAPHICSIP
       end
-      
-    end
+     configure_vbox_networking(admin.vm, vm, "operator")
+    end 
     admin.hostmanager.aliases = "operator"
   end
 
@@ -224,7 +248,7 @@ Vagrant.configure(2) do |config|
             if PROVIDER == "libvirt"
               vm.graphics_ip = GRAPHICSIP
             end
-            
+            configure_vbox_networking(node.vm, vm, node_type)
           end
           node.hostmanager.aliases = hostname
         end
