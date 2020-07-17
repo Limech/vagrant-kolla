@@ -3,6 +3,7 @@
 
 require "ipaddr"
 
+
 # Check for required plugin(s)
 ['vagrant-hostmanager'].each do |plugin|
   unless Vagrant.has_plugin?(plugin)
@@ -50,10 +51,11 @@ PROVIDER_DEFAULTS ||= {
       username: "vagrant"
     },
     ubuntu: {
-      base_image: "ubuntu/bionic64",
+      base_image: "bionic-sata",
+      #base_image: "ubuntu/bionic64",
       bridge_interface: "wlp3s0b1",
       sync_method: "virtualbox",
-      username: "ubuntu"
+      username: "vagrant"
     }
   }
 }
@@ -127,8 +129,8 @@ def configure_vbox_networking(vm, provider, node_type)
   provider.customize ["modifyvm", :id, "--nictype1", "virtio"]
   provider.customize ["modifyvm", :id, "--cableconnected1", "on"]
 
-  #provider.customize ["modifyvm", :id, "--nic2", "hostonly"]
-  #provider.customize ["modifyvm", :id, "--hostonlyadapter2", "vboxnet0"]
+  provider.customize ["modifyvm", :id, "--nic2", "hostonly"]
+  provider.customize ["modifyvm", :id, "--hostonlyadapter2", "vboxnet0"]
   provider.customize ["modifyvm", :id, "--nictype2", "virtio"]
   provider.customize ["modifyvm", :id, "--cableconnected2", "on"]
 
@@ -146,6 +148,7 @@ def configure_vbox_networking(vm, provider, node_type)
      provider.customize ["modifyvm", :id, "--intnet4", "storagenetwork"]
      provider.customize ["modifyvm", :id, "--nictype4", "virtio"]
      provider.customize ["modifyvm", :id, "--cableconnected4", "on"]
+
   when "storage"
      provider.customize ["modifyvm", :id, "--nic4", "intnet"]
      provider.customize ["modifyvm", :id, "--intnet4", "storagenetwork"]
@@ -156,27 +159,30 @@ def configure_vbox_networking(vm, provider, node_type)
      provider.customize ["modifyvm", :id, "--intnet5", "clusternetwork"]
      provider.customize ["modifyvm", :id, "--nictype5", "virtio"]
      provider.customize ["modifyvm", :id, "--cableconnected5", "on"]
-  when "network"
+
+   when "network"
      provider.customize ["modifyvm", :id, "--nic4", "bridged"]
-     provider.customize ["modifyvm", :id, "--bridgeadapter4", "enp0s9"]
+     provider.customize ["modifyvm", :id, "--bridgeadapter4", "enp7s0"]
      provider.customize ["modifyvm", :id, "--nictype4", "virtio"]
      provider.customize ["modifyvm", :id, "--cableconnected4", "on"]
   end
-
 end
    
-
-Vagrant.configure(2) do |config|
-
+Vagrant.configure("2") do |config|
 
   config.vm.box = get_default(:base_image)
+  config.vm.base_mac = nil
 
   # these may change depending on the image
   username = get_default(:username)
   user_home = "/home/#{username}"
   vagrant_shared_folder = "#{user_home}/sync"
 
-  config.vm.network "private_network", type: "dhcp"
+ `VBoxManage dhcpserver add --network="storagenetwork" --server-ip="10.0.20.1" --netmask="255.255.255.0" --lowerip="10.0.20.5" --upperip="10.0.20.100" --enable`
+ `VBoxManage dhcpserver add --network="clusternetwork" --server-ip="10.0.30.1" --netmask="255.255.255.0" --lowerip="10.0.30.5" --upperip="10.0.30.100" --enable`
+
+
+  #config.vm.network "private_network", type: "dhcp"
   # Bridge interface
   #config.vm.network "public_network", bridge: 'eno1'
 
@@ -242,14 +248,24 @@ Vagrant.configure(2) do |config|
           node.vm.synced_folder File.join(vagrant_dir, 'storage', node_type), "/data/host", create:"True", type: get_default(:sync_method)
           node.vm.synced_folder File.join(vagrant_dir, 'storage', 'shared'), "/data/shared", create:"True", type: get_default(:sync_method)
           node.vm.synced_folder ".", vagrant_shared_folder, disabled: true
+
+
           node.vm.provider PROVIDER do |vm|
             vm.memory = get_setting(node_type.to_sym, :memory)
             vm.cpus = get_setting(node_type.to_sym, :cpus)
+ 
             if PROVIDER == "libvirt"
               vm.graphics_ip = GRAPHICSIP
             end
             configure_vbox_networking(node.vm, vm, node_type)
           end
+
+          case node_type
+          when "storage"
+             node.vm.disk :disk, size: "10GB", name: "#{hostname}-ceph-journal"
+             node.vm.disk :disk, size: "10GB", name: "#{hostname}-ceph-osd"
+          end
+          
           node.hostmanager.aliases = hostname
         end
       end

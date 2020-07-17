@@ -59,6 +59,20 @@ function is_centos {
 # Install common packages and do some prepwork.
 function prep_work {
 
+    ## Setup DHCP on some interaces
+    cat >/etc/netplan/50-kolla.yaml <<-EOF
+network:
+  version: 2
+  ethernets:
+     enp0s8:
+        dhcp4: true
+     enp0s10: 
+        dhcp4: true
+     enp0s16:
+        dhcp4: true 
+EOF
+    netplan apply
+
     # This removes the fqdn from /etc/hosts's 127.0.0.1. This name.local will
     # resolve to the public IP instead of localhost.
     sed -i -r "s,^127\.0\.0\.1\s+.*,127\.0\.0\.1   localhost localhost.localdomain localhost4 localhost4.localdomain4," /etc/hosts
