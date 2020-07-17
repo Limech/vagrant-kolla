@@ -103,7 +103,7 @@ deb http://192.168.7.237:8081/repository/ubuntu-bionic/ bionic-security universe
 deb http://192.168.7.237:8081/repository/ubuntu-bionic/ bionic-security multiverse
 EOF
         apt-get update
-        apt-get -y install python3-mysqldb python3-pip python3-dev build-essential libssl-dev libffi-dev libxml2-dev libxslt-dev
+        apt-get -y install python3-mysqldb python3-pip python3-dev gpg gnupg parted software-properties-common build-essential libssl-dev libffi-dev libxml2-dev libxslt-dev
     else
         echo "Unsupported Distro: $DISTRO" 1>&2
         exit 1
