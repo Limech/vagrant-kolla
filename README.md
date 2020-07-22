@@ -59,33 +59,15 @@ vagrant up
 # Install Kolla in operator node
 
 ```bash
-# Go in operator and manually install Kolla
 vagrant ssh operator
 
-sudo apt-get update
-sudo apt-get install -y python-dev libffi-dev gcc libssl-dev python-selinux python-setuptools
 
-sudo apt-get install -y python-virtualenv
-mkdir kolla-ansible-venv
-virtualenv ~/kolla-ansible-venv/
-source ~/kolla-ansible-venv/bin/activate
-
-pip install -U pip
-pip install 'ansible<2.10'
-pip install kolla-ansible
-
-sudo mkdir -p /etc/kolla
-sudo chown $USER:$USER /etc/kolla
 git clone https://github.com/Limech/docker-kolla-ansible.git
-cp docker-kolla-ansible/kolla/* /etc/kolla/
-cp docker-kolla-ansible/inventory/multinode .
-
-sudo mkdir /etc/ansible
-sudo vi /etc/ansible/ansible.cfg
-[defaults]
-host_key_checking=False
-pipelining=True
-forks=100
+cd docker-kolla-ansible
+git checkout test
+## colla on purpose due to registry populating that searches
+## for all images 'kolla'
+sudo docker build --rm -t kolla:latest .
 
 # Ensure all nodes can be reached from operator.
 sudo cp /home/ubuntu/.ssh/id_rsa /home/vagrant/.ssh
@@ -99,41 +81,101 @@ ssh root@control01  # Log in to each and accept the host key..
 # Otherwise, RabbitMQ will fail prechecks
 
 # This should successfully ping localhost and control01 node
-ansible -i multinode all -m ping
+sudo ./kolla-ansible.sh "ansible -i multinode all -m ping"
 
-kolla-genpwd
+cp kolla/passwords-empty.yml kolla/passwords.yml
+sudo ./kolla-ansible.sh kolla-genpwd
 
-## Populate private registry with all images.
-kolla-ansible -i ./multinode bootstrap-servers
+sudo ./start-registry.sh
 
-## Ensure docker_registry is not set in /etc/kolla/globals.yaml
-kolla-ansible pull
-docker images | grep kolla | grep -v local | awk '{print $1,$2}' | while read -r image tag; do
-    docker tag ${image}:${tag} operator:5000/${image}:${tag}
-    docker push operator:5000/${image}:${tag}
-done
-## Ensure to set the docker_registry back to operator:5000
-## before running next commands.
+# Optional, create VM snapshots.
+exit
+## Turn on nested hypervisor in compute node(s)
+vagrant snapshot push
+vagrant ssh operator
+cd docker-kolla-ansible
 
+# This will ensure docker is setup on nodes with private registry set.
+sudo ./kolla-ansible.sh "kolla-ansible -i ./multinode bootstrap-servers"
 
-kolla-ansible -i ./multinode prechecks
-kolla-ansible -i ./multinode deploy
+## Install ceph??
+## Copy files for OpenStack
+exit
+vagrant ssh storage01
+sudo mkdir /data/shared/ceph/
+sudo cp -r /etc/ceph/* /data/shared/ceph/
+exit
+vagrant ssh operator
+cp /data/shared/ceph/ceph.conf kolla/config/glance/
+cp /data/shared/ceph/ceph.client.glance.keyring kolla/config/glance/
+mkdir kolla/config/cinder/cinder-backup
+mkdir kolla/config/cinder/cinder-volume
+cp /data/shared/ceph/ceph.conf kolla/config/cinder/
+cp /data/shared/ceph/ceph.client.cinder.keyring kolla/config/cinder/cinder-backup/
+cp /data/shared/ceph/ceph.client.cinder-backup.keyring kolla/config/cinder/cinder-backup/
+cp /data/shared/ceph/ceph.client.cinder.keyring kolla/config/cinder/cinder-volume/
+mkdir kolla/config/nova
+cp /data/shared/ceph/ceph.conf kolla/config/nova/
+cp /data/shared/ceph/ceph.client.cinder.keyring kolla/config/nova/
+cp kolla/config/nova/ceph.client.cinder.keyring kolla/config/nova/ceph.client.nova.keyring
+
+## Force pull all images to nodes using local registry.
+sudo ./kolla-ansible.sh "kolla-ansible -i ./multinode pull"
+
+sudo ./kolla-ansible.sh "kolla-ansible -i ./multinode prechecks"
+sudo ./kolla-ansible.sh "kolla-ansible -i ./multinode deploy"
 
 # Possible MariaDB sync issue across multiple controllers.
 # Run mariadb-recovery and deploy again.
-kolla-ansible -i ./multinode mariadb-recovery
+sudo ./kolla-ansible.sh "kolla-ansible -i ./multinode mariadb_recovery"
 
+sudo ./kolla-ansible.sh "kolla-ansible -i ./multinode post-deploy"
+sudo ./kolla-ansible.sh "kolla-ansible -i ./multinode check"
 ```
 
 # Use OpenStack
 ```bash
-## Command line has issues
-pip install python-openstackclient
-kolla-ansible -i ./multinode post-deploy
-. /etc/kolla/admin-openrc.sh
+sudo apt install -y python3 python3-pip python3-venv
+mkdir ~/ostack
+python3 -m venv ~/ostack
+source ~/ostack/bin/activate
+python3 -m pip install python-openstackclient
+openstack --version
+
+. kolla/admin-openrc.sh
+openstack user list
 
 # Get admin password
-cat /etc/kolla/passwords.yml | grep keystone_admin
+cat kolla/passwords.yml | grep keystone_admin
 # Open Horizon UI, username 'admin', password above.
 http://{control01-ip}
+
+# Get image
+wget https://cloud-images.ubuntu.com/bionic/20200702/bionic-server-cloudimg-amd64.img
+wget http://download.cirros-cloud.net/0.5.1/cirros-0.5.1-x86_64-disk.img
+
+openstack image create \
+    --container-format bare \
+    --disk-format qcow2 \
+    --file bionic-server-cloudimg-amd64.img \
+    Ubuntu-18.04-x86_64
+
+openstack image create \
+    --container-format bare \
+    --disk-format qcow2 \
+    --file cirros-0.5.1-x86_64-disk.img\
+    cirros
+
+openstack image set --public 2a28debc-3b63-48f4-bffe-2e63834862a6
+openstack image set --protected 2a28debc-3b63-48f4-bffe-2e63834862a6
+
+# Create flavor - 2GB RAM, 8GB HDD for Ubuntu bionic.
+# Create security group enable SSH / ICMP
+# Create external network
+# Create external router
+# Create floating-ip range
+# Connect router to external network
+# Create VM
+# Allocate floating IP to VM
+# SSH into VM using floating IP
 ```
