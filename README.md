@@ -98,31 +98,42 @@ cd docker-kolla-ansible
 # This will ensure docker is setup on nodes with private registry set.
 sudo ./kolla-ansible.sh "kolla-ansible -i ./multinode bootstrap-servers"
 
-## Install ceph??
-## Copy files for OpenStack
+## Install ceph.
+cd ..
+git clone https://github.com/limech/docker-ceph-ansible.git
+cd docker-ceph-ansible
+git checkout test
+sudo docker build --rm -t ceph:test .
+##### IMPORTANT
+# Change IPs in 'inventory' file for each node to match those currently set.
+vi inventory # I.e. 10.0.20.XX
+sudo ./ceph-ansible.sh "ansible -i inventory all -m ping"
+sudo ./ceph-ansible.sh "ansible-playbook --skip-tags=with_pkg -i inventory site-container.yml" 
+### IF FAILURE OCCURS!!!
+## the ceph docker containers might crash and keep coming back from the 
+## dead and cause future re-runs of ceph-ansible to fail as well.
+## Ensure to delete the container (while it is up and before it crashes)
+## and remove the docker image for ceph/daemon. Do this to all storage nodes.
+
+## Copy Ceph files for OpenStack
 exit
 vagrant ssh storage01
+## In case this was done before
+sudo rm -rf /data/shared/ceph 
 sudo mkdir /data/shared/ceph/
 sudo cp -r /etc/ceph/* /data/shared/ceph/
 exit
 vagrant ssh operator
-cp /data/shared/ceph/ceph.conf kolla/config/glance/
-cp /data/shared/ceph/ceph.client.glance.keyring kolla/config/glance/
-mkdir kolla/config/cinder/cinder-backup
-mkdir kolla/config/cinder/cinder-volume
-cp /data/shared/ceph/ceph.conf kolla/config/cinder/
-cp /data/shared/ceph/ceph.client.cinder.keyring kolla/config/cinder/cinder-backup/
-cp /data/shared/ceph/ceph.client.cinder-backup.keyring kolla/config/cinder/cinder-backup/
-cp /data/shared/ceph/ceph.client.cinder.keyring kolla/config/cinder/cinder-volume/
-mkdir kolla/config/nova
-cp /data/shared/ceph/ceph.conf kolla/config/nova/
-cp /data/shared/ceph/ceph.client.cinder.keyring kolla/config/nova/
-cp kolla/config/nova/ceph.client.cinder.keyring kolla/config/nova/ceph.client.nova.keyring
+cd docker-kolla-ansible
+
+# Copy ceph files from shared folder into Kolla dirs
+./copy-ceph-conf.sh
 
 ## Force pull all images to nodes using local registry.
 sudo ./kolla-ansible.sh "kolla-ansible -i ./multinode pull"
-
 sudo ./kolla-ansible.sh "kolla-ansible -i ./multinode prechecks"
+
+# vagrant snapshot push (optional)
 sudo ./kolla-ansible.sh "kolla-ansible -i ./multinode deploy"
 
 # Possible MariaDB sync issue across multiple controllers.
@@ -132,6 +143,11 @@ sudo ./kolla-ansible.sh "kolla-ansible -i ./multinode mariadb_recovery"
 sudo ./kolla-ansible.sh "kolla-ansible -i ./multinode post-deploy"
 sudo ./kolla-ansible.sh "kolla-ansible -i ./multinode check"
 ```
+
+######
+# IMPORTANT!!
+# Turn on nested virtualization on compute01
+VBoxManage modifyvm {compute01-vm-full-name} --nested-hw-virt on
 
 # Use OpenStack
 ```bash
