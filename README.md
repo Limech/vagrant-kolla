@@ -65,8 +65,6 @@ vagrant ssh operator
 git clone https://github.com/Limech/docker-kolla-ansible.git
 cd docker-kolla-ansible
 git checkout test
-## colla on purpose due to registry populating that searches
-## for all images 'kolla'
 sudo docker build --rm -t kolla:latest .
 
 # Ensure all nodes can be reached from operator.
@@ -90,7 +88,6 @@ sudo ./start-registry.sh
 
 # Optional, create VM snapshots.
 exit
-## Turn on nested hypervisor in compute node(s)
 vagrant snapshot push
 vagrant ssh operator
 cd docker-kolla-ansible
@@ -147,7 +144,9 @@ sudo ./kolla-ansible.sh "kolla-ansible -i ./multinode check"
 ######
 # IMPORTANT!!
 # Turn on nested virtualization on compute01
+```bash
 VBoxManage modifyvm {compute01-vm-full-name} --nested-hw-virt on
+```
 
 # Use OpenStack
 ```bash
